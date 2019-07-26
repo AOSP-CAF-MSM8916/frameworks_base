@@ -81,7 +81,11 @@ class TaskPositioningController {
     void handleTapOutsideTask(DisplayContent displayContent, int x, int y) {
         mHandler.post(() -> {
             int taskId = -1;
-            synchronized (mService.mWindowMap) {
+
+            if (mService.isGestureButtonEnabled() && mService.isGestureButtonRegion(x, y)) {
+                return;
+            }
+           synchronized (mService.mWindowMap) {
                 final Task task = displayContent.findTaskForResizePoint(x, y);
                 if (task != null) {
                     if (!startPositioningLocked(task.getTopVisibleAppMainWindow(), true /*resize*/,
