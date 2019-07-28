@@ -223,10 +223,8 @@ public class LightBarController implements BatteryController.BatteryStateChangeC
         }
     }
 
-
     @Override
-    public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging,
-            boolean fastCharging) {
+    public void onBatteryLevelChanged(int level, boolean pluggedIn, boolean charging) {
 
     }
 
