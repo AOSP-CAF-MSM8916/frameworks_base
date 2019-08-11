@@ -6497,6 +6497,13 @@ message MetricsEvent {
     // OS: Q
     ACTION_EMERGENCY_DIALER_FROM_POWER_MENU = 1569;
 
+    // OPEN: QS Gaming mode tile shown
+    // ACTION: QS Gaming mode tile tapped
+    //  SUBTYPE: 0 is off, 1 is on
+    // CATEGORY: QUICK_SETTINGS
+    // OS: P
+    QS_GAMINGMODE = 1570;    
+
     // ---- End Q Constants, all Q constants go above this line ----
 
     // Add new aosp constants above this line.

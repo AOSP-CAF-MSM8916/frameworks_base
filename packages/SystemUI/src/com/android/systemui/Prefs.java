@@ -57,7 +57,8 @@ public final class Prefs {
             Key.SEEN_RINGER_GUIDANCE_COUNT,
             Key.QS_HAS_TURNED_OFF_MOBILE_DATA,
             Key.TOUCHED_RINGER_TOGGLE,
-            Key.QUICK_STEP_INTERACTION_FLAGS
+            Key.QUICK_STEP_INTERACTION_FLAGS,
+	    Key.QS_GAMING_MODE_DIALOG_SHOWN
     })
     public @interface Key {
         @Deprecated
@@ -74,7 +75,8 @@ public final class Prefs {
         String DND_NONE_SELECTED = "DndNoneSelected";
         String DND_FAVORITE_ZEN = "DndFavoriteZen";
         String QS_DATA_SAVER_DIALOG_SHOWN = "QsDataSaverDialogShown";
-        @Deprecated
+        String QS_GAMING_MODE_DIALOG_SHOWN = "QsGamingModeDialogShown";
+	@Deprecated
         String QS_HOTSPOT_ADDED = "QsHotspotAdded";
         @Deprecated
         String QS_DATA_SAVER_ADDED = "QsDataSaverAdded";
