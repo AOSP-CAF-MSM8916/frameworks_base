@@ -32,7 +32,8 @@ import android.text.format.DateUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewStub;
-import android.view.ViewTreeObserver;
+import android.view.ViewTreeObserver.OnPreDrawListener;
+
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -40,6 +41,7 @@ import com.android.internal.R;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
+import com.android.internal.widget.MediaNotificationView;
 import com.android.systemui.Dependency;
 import com.android.systemui.statusbar.NotificationMediaManager;
 import com.android.systemui.statusbar.TransformableView;
@@ -68,6 +70,8 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
     private View mSeekBarView;
     private Context mContext;
     private MetricsLogger mMetricsLogger;
+    private boolean mIsViewVisible;
+    private boolean mOnPreDrawListenerRegistered = false;
 
     @VisibleForTesting
     protected SeekBar.OnSeekBarChangeListener mSeekListener =
@@ -89,11 +93,46 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
         }
     };
 
+    private MediaNotificationView.VisibilityChangeListener mVisibilityListener =
+            new MediaNotificationView.VisibilityChangeListener() {
+        @Override
+        public void onAggregatedVisibilityChanged(boolean isVisible) {
+            mIsViewVisible = isVisible;
+            if (isVisible && mMediaController != null) {
+                // Restart timer if we're currently playing and didn't already have one going
+                PlaybackState state = mMediaController.getPlaybackState();
+                if (state != null && state.getState() == PlaybackState.STATE_PLAYING
+                        && mSeekBarTimer == null && mSeekBarView != null
+                        && mSeekBarView.getVisibility() != View.GONE) {
+                    startTimer();
+                }
+            } else {
+                clearTimer();
+            }
+        }
+    };
+
+    private View.OnAttachStateChangeListener mAttachStateListener =
+            new View.OnAttachStateChangeListener() {
+        @Override
+        public void onViewAttachedToWindow(View v) {
+        }
+
+        @Override
+        public void onViewDetachedFromWindow(View v) {
+            mIsViewVisible = false;
+        }
+    };
+
     private MediaController.Callback mMediaCallback = new MediaController.Callback() {
         @Override
         public void onSessionDestroyed() {
             clearTimer();
             mMediaController.unregisterCallback(this);
+            if (mView instanceof MediaNotificationView) {
+                ((MediaNotificationView) mView).removeVisibilityListener(mVisibilityListener);
+                mView.removeOnAttachStateChangeListener(mAttachStateListener);
+            }
         }
 
         @Override
@@ -121,16 +160,33 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
         }
     };
 
+    private OnPreDrawListener mPreDrawListener = new OnPreDrawListener(){
+        @Override
+        public boolean onPreDraw(){
+            removeOnPreDrawListener();
+            mHandler.removeCallbacks(mOnUpdateTimerTick);
+            mHandler.postDelayed(mOnUpdateTimerTick,PROGRESS_UPDATE_INTERVAL);
+            return true;
+        }
+    };
+
     protected NotificationMediaTemplateViewWrapper(Context ctx, View view,
             ExpandableNotificationRow row) {
         super(ctx, view, row);
         mContext = ctx;
         mMediaManager = Dependency.get(NotificationMediaManager.class);
         mMetricsLogger = Dependency.get(MetricsLogger.class);
+
+        if (mView instanceof MediaNotificationView) {
+            MediaNotificationView mediaView = (MediaNotificationView) mView;
+            mediaView.addVisibilityListener(mVisibilityListener);
+            mView.addOnAttachStateChangeListener(mAttachStateListener);
+        }
     }
 
     private void resolveViews() {
         mActions = mView.findViewById(com.android.internal.R.id.media_actions);
+        mIsViewVisible = mView.isShown();
 
         final MediaSession.Token token = mRow.getEntry().notification.getNotification().extras
                 .getParcelable(Notification.EXTRA_MEDIA_SESSION);
@@ -209,26 +265,45 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
 
     private void startTimer() {
         clearTimer();
-        updateSeekBarView();
+        if (mIsViewVisible) {
+            addOnPreDrawListener();
+        }
     }
 
-    private void updateSeekBarView() {
-        mSeekBarView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener(){
-            @Override
-            public boolean onPreDraw(){
-                mSeekBarView.getViewTreeObserver().removeOnPreDrawListener(this);
-                mHandler.postDelayed(mOnUpdateTimerTick,PROGRESS_UPDATE_INTERVAL);
-                return true;
-            }
-        });
+
+    private void addOnPreDrawListener() {
+        if ( !mOnPreDrawListenerRegistered ) {
+            mOnPreDrawListenerRegistered = true;
+            mSeekBarView.getViewTreeObserver().addOnPreDrawListener(mPreDrawListener);
+        }
+    }
+
+    private void removeOnPreDrawListener() {
+        if ( mOnPreDrawListenerRegistered ) {
+            mSeekBarView.getViewTreeObserver().removeOnPreDrawListener(mPreDrawListener);
+            mHandler.postDelayed(mOnUpdateTimerTick, PROGRESS_UPDATE_INTERVAL);
+            mOnPreDrawListenerRegistered = false;
+        }
     }
 
     private void clearTimer() {
         if (mSeekBarTimer != null) {
-            // TODO: also trigger this when the notification panel is collapsed
             mSeekBarTimer.cancel();
             mSeekBarTimer.purge();
             mSeekBarTimer = null;
+        }
+        removeOnPreDrawListener();
+    }
+
+    @Override
+    public void setRemoved() {
+        clearTimer();
+        if (mMediaController != null) {
+            mMediaController.unregisterCallback(mMediaCallback);
+        }
+        if (mView instanceof MediaNotificationView) {
+            ((MediaNotificationView) mView).removeVisibilityListener(mVisibilityListener);
+            mView.removeOnAttachStateChangeListener(mAttachStateListener);
         }
     }
 
@@ -267,9 +342,11 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
         public void run() {
             if (mMediaController != null && mSeekBar != null) {
                 PlaybackState playbackState = mMediaController.getPlaybackState();
-                updateSeekBarView();
                 if (playbackState != null) {
                     updatePlaybackUi(playbackState);
+                    if ( playbackState.getState() == PlaybackState.STATE_PLAYING ) {
+                        addOnPreDrawListener();
+                    }
                 } else {
                     clearTimer();
                 }
@@ -280,6 +357,10 @@ public class NotificationMediaTemplateViewWrapper extends NotificationTemplateVi
     };
 
     private void updatePlaybackUi(PlaybackState state) {
+        if (mSeekBar == null || mSeekBarElapsedTime == null) {
+            return;
+        }
+
         long position = state.getPosition();
         mSeekBar.setProgress((int) position);
 

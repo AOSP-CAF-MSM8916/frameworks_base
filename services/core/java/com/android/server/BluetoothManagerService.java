@@ -302,7 +302,6 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                                         mContext.getPackageName(), false);
                                 mBluetooth.onBrEdrDown();
                                 mEnable = false;
-                                mEnableExternal = false;
                             }
                         } catch (RemoteException e) {
                             Slog.e(TAG, "Unable to call onBrEdrDown", e);
@@ -853,8 +852,15 @@ class BluetoothManagerService extends IBluetoothManager.Stub {
                          BluetoothAdapter.nameForState(st));
                 return;
             }
-            if (isBluetoothPersistedStateOnBluetooth() ||
-                !isBleAppPresent() || mEnableExternal) {
+           if (isAirplaneModeOn() && !mEnableExternal) {
+                addActiveLog(BluetoothProtoEnums.ENABLE_DISABLE_REASON_AIRPLANE_MODE,
+                    mContext.getPackageName(), false);
+
+                mBluetooth.onBrEdrDown();
+                mEnable = false;
+                mEnableExternal = false;
+            } else if (isBluetoothPersistedStateOnBluetooth() ||
+                 mEnableExternal) {
                 // This triggers transition to STATE_ON
                 mBluetooth.updateQuietModeStatus(mQuietEnable);
                 mBluetooth.onLeServiceUp();
